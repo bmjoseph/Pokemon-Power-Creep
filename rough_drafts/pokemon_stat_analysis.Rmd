@@ -1,0 +1,393 @@
+---
+title: "Pokemon Power Creep Analysis"
+author: "Bailey Joseph"
+date: "11/28/2017"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+```
+
+```{r}
+btheme<-function(){
+  theme_grey()+
+  theme(plot.title = element_text(color = "black",
+                                                    size = 14,
+                                                    face = "bold.italic"),
+                                       axis.title.x = element_text(size = 12,
+                                                  face = "bold"),
+                                       axis.title.y = element_text(size = 12,
+                                                      face = "bold"),
+                                       legend.position = "none")}
+```
+
+
+
+```{r}
+pokemon <- read_csv("../data/pokemon.csv")
+pokemon$`Type 1` <- as.factor(pokemon$`Type 1`)
+pokemon$`Type 2` <- as.factor(pokemon$`Type 2`)
+pokemon$Legendary <- as.factor(pokemon$Legendary)
+pokemon$atk_spread <- abs(pokemon$Attack - pokemon$`Sp. Atk`)
+```
+
+Are Pokemon getting stronger over time?  
+
+Many games feature a power creep over time, and as a franchise that's been around for 21 years, Pokemon seems like a prime candidate. The motivation is simple -- keep pumping out stronger and stronger characters to keep people buying new games. Unlike many franchises, Pokemon doesn't actually *have* to do this, since each game is self contained and the company has been known to only allow pokemon from a single generation into their video game competitions. With that said, it seemed likely that the designers would feel pressure to outdo themselves each year when they sit down to come up with their newest batch.  
+
+The first measure to look at to try to answer our question is just the simple average stat total for pokemon of each generation:
+
+```{r}
+gen1 <- filter(pokemon, Generation == 1)
+gen2 <- filter(pokemon, Generation == 2)
+gen3 <- filter(pokemon, Generation == 3)
+gen4 <- filter(pokemon, Generation == 4)
+gen5 <- filter(pokemon, Generation == 5)
+gen6 <- filter(pokemon, Generation == 6 |
+                 (str_detect(pokemon$Name, "Mega") &
+                    !str_detect(pokemon$Name, "Meganium")))
+
+gen1 <- gen1[!str_detect(gen1$Name, "Mega"), ]
+gen2 <- gen2[!str_detect(gen2$Name, "Mega") | str_detect(gen2$Name, "Meganium"), ]
+gen3 <- gen3[!str_detect(gen3$Name, "Mega"), ]
+gen4 <- gen4[!str_detect(gen4$Name, "Mega"), ]
+gen5 <- gen5[!str_detect(gen5$Name, "Mega"), ]
+
+```
+
+```{r}
+ave_stats_by_gen <- rep(0, 6)
+ave_stats_by_gen[1] <- mean(gen1$Total)
+ave_stats_by_gen[2] <- mean(gen2$Total)
+ave_stats_by_gen[3] <- mean(gen3$Total)
+ave_stats_by_gen[4] <- mean(gen4$Total)
+ave_stats_by_gen[5] <- mean(gen5$Total)
+ave_stats_by_gen[6] <- mean(gen6$Total)
+num_mons_by_gen <- rep(0, 6)
+num_mons_by_gen[1] <- nrow(gen1)
+num_mons_by_gen[2] <- nrow(gen2)
+num_mons_by_gen[3] <- nrow(gen3)
+num_mons_by_gen[4] <- nrow(gen4)
+num_mons_by_gen[5] <- nrow(gen5)
+num_mons_by_gen[6] <- nrow(gen6)
+```
+
+```{r}
+by_gen <- data.frame("generation" = 1:6,
+                     "ave_stats" = ave_stats_by_gen,
+                     "num_mons" = num_mons_by_gen)
+```
+
+
+```{r}
+average_total_by_generation <- (ggplot(data = by_gen,
+                                       aes(x = generation,
+                                           y = ave_stats)) +
+                                 geom_point(size = 3,
+                                            aes(color = ave_stats)) +
+                                  ylim(c(350,550)) +
+                                  scale_x_continuous(breaks = 1:6) +
+                                  labs(title = "Average Base Stat Total by Generation",
+                                       x = "Generation",
+                                       y = "BST") +
+                                  geom_label(aes(label = round(ave_stats, 1)),
+                            alpha = 1,
+                             nudge_y = 10,
+                              size = 2.5) +
+                                  btheme())
+average_total_by_generation  
+```
+
+As you can see, the first three generations were relatively even. Compared to that baseline, stats started to rise in generations 4 and 5 before really taking off in generation 6.  
+
+Of course, it's possible to introduce power creep in other ways. For example, if the next generation were to introduce two pokemon, a low level bug with a horrendous BST (base stat total) of 100 and then have that pokemon evolve into a beast with 900 BST, that would surely reflect more of a power creep than an alternate generation who released two pokemon who each had a BST of 500, even though the average would be the same.  
+
+To adjust for this, let's take a look at the average BST of only the top fourth of each generation:  
+
+```{r}
+num_to_keep <- by_gen$num_mons%/%3
+average_strong_stats <- c(mean(arrange(gen1, -Total)[1:num_to_keep[1], 5]$Total),
+                         mean(arrange(gen2, -Total)[1:num_to_keep[2], 5]$Total),
+                         mean(arrange(gen3, -Total)[1:num_to_keep[3], 5]$Total),
+                         mean(arrange(gen4, -Total)[1:num_to_keep[4], 5]$Total),
+                         mean(arrange(gen5, -Total)[1:num_to_keep[5], 5]$Total),
+                         mean(arrange(gen6, -Total)[1:num_to_keep[6], 5]$Total))
+#ave_ss_frame <- data.frame("Generation" = 1:6,
+    #                       "Strong_Ave" = average_strong_stats)
+by_gen$strong_ave <- average_strong_stats
+ave_ss_frame
+```
+
+
+```{r}
+gg_strong_over_time <- (ggplot(data = by_gen, aes(x = generation, y = strong_ave)) +
+                          geom_point(aes(color = strong_ave),
+                                     size = 3) +
+                          geom_label(aes(label = round(strong_ave, 1)),
+                                     nudge_y = 7,
+                                     size = 2.5) +
+                          ylim(500,675) +
+                          labs(title = "Average Base Stat Total of Each Generation's Strongest Pokemon",
+                               x = "Generation",
+                               y = "BST") +
+                          btheme())
+gg_strong_over_time
+```
+
+While the overall shape is very similar, we do now see some divergence within the first three generations. Outside of generation 5, which shows up as an exception to the trend in both graphs, the pattern also gets slightly stronger when looking at this measure. The difference between generation 6 and generation 1 is larger when we look only at the strongest pokemon.  
+
+
+
+
+```{r, eval = FALSE}
+#What about percentage of Pokemon that are strong? Define strong as base 500 or higher. Examples of pokemon with exactly 500 BST are Alakazam, Gengar, Scizor, and Rapidash (you can see that some of these are more competitively viable than others, so take the word "strong" with a grain of salt).
+count(pokemon, Total >= 500)$n[2]/nrow(pokemon)
+```
+
+For reference, about 30% of pokemon have a BST of 500 or more. 
+
+```{r}
+frac_strong_by_gen <- rep(0, 6)
+frac_strong_by_gen[1] <- count(gen1, Total >= 500)$n[2]/nrow(gen1)
+frac_strong_by_gen[2] <- count(gen2, Total >= 500)$n[2]/nrow(gen2)
+frac_strong_by_gen[3] <- count(gen3, Total >= 500)$n[2]/nrow(gen3)
+frac_strong_by_gen[4] <- count(gen4, Total >= 500)$n[2]/nrow(gen4)
+frac_strong_by_gen[5] <- count(gen5, Total >= 500)$n[2]/nrow(gen5)
+frac_strong_by_gen[6] <- count(gen6, Total >= 500)$n[2]/nrow(gen6)
+by_gen$frac_strong <- round(frac_strong_by_gen, 2)
+```
+
+```{r, eval = FALSE}
+frac_strong_by_generation <- (ggplot(data = by_gen,
+                                       aes(x = generation,
+                                           y = frac_strong)) +
+                                 geom_point(size = 3,
+                                            aes(color = frac_strong)) +
+                                  ylim(c(.1,.6)) +
+                                  scale_x_continuous(breaks = 1:6) +
+                                  labs(title = "Proportion of Pokemon with BST >= 500 by Generation",
+                                       x = "Generation",
+                                       y = "Proportion") +
+                                  geom_label(aes(label = frac_strong),
+                            alpha = 1,
+                             # nudge_x = .25,
+                             nudge_y = .02,
+                              size = 2.5) +
+                                  theme(plot.title = element_text(color = "black",
+                                                    size = 14,
+                                                    face = "bold.italic"),
+                                       axis.title.x = element_text(size = 12,
+                                                  face = "bold"),
+                                       axis.title.y = element_text(size = 12,
+                                                      face = "bold"),
+                                       legend.position = "none"))
+frac_strong_by_generation  
+```
+
+Generations 4 and 6 were particularly strong, with almost half of the pokemon added to generation 6 having a BST of 500 or more. This is likely due to the introduction of powerful mega evolutions. 
+
+It's also possible that there's a more sneaky form of power creep going on. A pokemon usually only needs one of its attack stats to function. Even with the same base stat total, a pokemon with 150 attack and 15 special attack (Mega Beedrill) will be much stronger offensively than a pokemon with 85 in both stats (Murkrow) even though Murkrow has a slightly higher average attack stat. Let's see how much the spread between different attack stats changes over time:
+
+
+```{r}
+ave_spread_by_gen <- rep(0, 6)
+ave_spread_by_gen[1] <- mean(gen1$atk_spread)
+ave_spread_by_gen[2] <- mean(gen2$atk_spread)
+ave_spread_by_gen[3] <- mean(gen3$atk_spread)
+ave_spread_by_gen[4] <- mean(gen4$atk_spread)
+ave_spread_by_gen[5] <- mean(gen5$atk_spread)
+ave_spread_by_gen[6] <- mean(gen6$atk_spread)
+by_gen$ave_spread <- round(ave_spread_by_gen, 1)
+```
+
+```{r}
+ave_spread_by_generation <- (ggplot(data = by_gen,
+                                       aes(x = generation,
+                                           y = ave_spread)) +
+                                 geom_point(size = 3,
+                                            aes(color = ave_spread)) +
+                                  scale_x_continuous(breaks = 1:6) +
+                                  labs(title = "Average Absolute Difference Between Attack and Special Attack",
+                                       x = "Generation",
+                                       y = "Difference") +
+                                  geom_label(aes(label = ave_spread),
+                                             nudge_y = .75,
+                                             size = 2.5) +
+                                  btheme())
+ave_spread_by_generation  
+```
+
+
+
+```{r}
+
+by_gen$spread_adjusted <- by_gen$ave_spread / by_gen$ave_stats
+cor(by_gen$ave_stats, by_gen$spread_adjusted)
+
+ave_spread_vs_ave_stats <- (ggplot(data = by_gen,
+                                       aes(x = ave_stats,
+                                           y = spread_adjusted)) +
+                                 geom_point(size = 3,
+                                            aes(color = ave_stats)) +
+                                  labs(title = "Adjusted Spread vs BST Across Generations",
+                                       x = "Average BST",
+                                       y = "Average Adjusted Spread") +
+                                  geom_label(aes(label = generation),
+                           # alpha = 1,
+                             # nudge_x = .25,
+                             nudge_y = .001,
+                              size = 2.5) +
+                                  btheme() +
+                              geom_smooth(method = "lm", se = FALSE))
+ave_spread_vs_ave_stats  
+```
+
+So the power creep is compounded. As the average BST increases, so too does the difference between the two attacking stats.
+
+How does this compare to the result for all pokemon?: 
+
+```{r}
+pokemon$Generation <- as.factor(pokemon$Generation)
+pokemon$spread_adjusted <- pokemon$atk_spread / pokemon$Total
+cor(pokemon$Total, pokemon$spread_adjusted)
+bst_vs_spread <- (ggplot(data = pokemon,
+                                       aes(x = Total,
+                                           y = spread_adjusted)) +
+                                 geom_point(size = 3,
+                                            aes(color = Generation)) + #, alpha = .25)) +
+                                 # ylim(c(.1,.6)) +
+                                 # scale_x_continuous(breaks = 1:6) +
+                                  labs(title = "BST vs Adjusted Attack Spread",
+                                       x = "BST",
+                                       y = "Adjusted Attack Spread") +
+                                  #geom_label(aes(label = Name),
+                            #alpha = 1,
+                             # nudge_x = .25,
+                             #nudge_y = .75,
+                             # size = 2.5) +
+                                  theme(plot.title = element_text(color = "black",
+                                                    size = 14,
+                                                    face = "bold.italic"),
+                                       axis.title.x = element_text(size = 12,
+                                                  face = "bold"),
+                                       axis.title.y = element_text(size = 12,
+                                                      face = "bold")) +
+                                      
+                     annotate("text", x=700, y=.2, size = 6,
+                                label= "italic(R) == -.04", parse = TRUE) +
+                    geom_smooth(method = "lm", se = FALSE, color = "black"))
+bst_vs_spread
+```
+
+Perhaps we can get a more accurate reflection of how "min-maxed" pokemon are getting over time. I'll rescale every pokemon's stats to its percentage of total stats (so if a pokemon has 100 attack and a base stat total of 500, then its adjusted attack stat is .2). I'll measure the spread by computing the standard deviation of this new list of stats. 
+
+```{r}
+pokemon
+```
+
+```{r}
+gen1
+```
+
+
+```{r}
+
+get_gen_stats <- function(dframe){
+  stats_by_mon <- list()
+for (i in 1:nrow(dframe)) {
+  stats_by_mon[[i]] <- c(rep(0, 6))
+  for (j in 1:6) {
+    stats_by_mon[[i]][j] <- as.numeric(dframe[i, j + 5])
+  }
+}
+  return(stats_by_mon)
+}
+
+rescale_gen_stats <- function(stat_list) {
+  for (i in 1:length(stat_list)) {
+    total <- sum(stat_list[[i]])
+    stat_list[[i]] = stat_list[[i]]/total
+  }
+  return(stat_list)
+}
+
+sd_gen_stats <- function(stat_list) {
+  stds <- c(0)
+  for (i in 1:length(stat_list)) {
+    stds[i] <- sd(stat_list[[i]])
+  }
+  return(stds)
+}
+gen1_stats <- get_gen_stats(gen1)
+gen1_scaled <- rescale_gen_stats(gen1_stats)
+gen1_stds <- sd_gen_stats(gen1_scaled)
+
+gen2_stats <- get_gen_stats(gen2)
+gen2_scaled <- rescale_gen_stats(gen2_stats)
+gen2_stds <- sd_gen_stats(gen2_scaled)
+
+gen3_stats <- get_gen_stats(gen3)
+gen3_scaled <- rescale_gen_stats(gen3_stats)
+gen3_stds <- sd_gen_stats(gen3_scaled)
+
+gen4_stats <- get_gen_stats(gen4)
+gen4_scaled <- rescale_gen_stats(gen4_stats)
+gen4_stds <- sd_gen_stats(gen4_scaled)
+
+gen5_stats <- get_gen_stats(gen5)
+gen5_scaled <- rescale_gen_stats(gen5_stats)
+gen5_stds <- sd_gen_stats(gen5_scaled)
+
+gen6_stats <- get_gen_stats(gen6)
+gen6_scaled <- rescale_gen_stats(gen6_stats)
+gen6_stds <- sd_gen_stats(gen6_scaled)
+
+```
+
+```{r}
+spread_frame <- data.frame("Generation" = c(rep(1:6, times = c(nrow(gen1),
+                                                             nrow(gen2),
+                                                             nrow(gen3),
+                                                             nrow(gen4),
+                                                             nrow(gen5),
+                                                             nrow(gen6)))),
+                          "STD" = c(gen1_stds,
+                                    gen2_stds,
+                                    gen3_stds,
+                                    gen4_stds,
+                                    gen5_stds,
+                                    gen6_stds))
+spread_frame
+```
+
+```{r}
+spread_over_time <- (ggplot(data = spread_frame, aes(x = Generation, y = STD)) +
+                       geom_point(alpha = .05))
+spread_over_time
+```
+
+```{r}
+spread_by_gen <- c(mean(gen1_stds),
+                   mean(gen2_stds),
+                                   mean(gen3_stds),
+                                    mean(gen4_stds),
+                                    mean(gen5_stds),
+                                    mean(gen6_stds))
+spread_by_gen_frame <- data.frame("Generation" = 1:6,
+                                  "Average_STD" = spread_by_gen)
+
+ave_spread_plot <- (ggplot(data = spread_by_gen_frame, aes(x = Generation, y = Average_STD)) +
+                      geom_point(size = 4) + 
+                      btheme())
+ave_spread_plot
+```
+
