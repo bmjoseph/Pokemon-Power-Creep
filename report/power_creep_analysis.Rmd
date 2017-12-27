@@ -2,7 +2,9 @@
 title: "Pokémon Power Creep Analysis"
 author: "Bailey Joseph"
 date: "11/28/2017"
-output: github_document
+output:
+  html_document:
+    theme: cosmo
 
 ---
 <br>  
@@ -17,6 +19,7 @@ library(readr)
 library(dplyr)
 library(ggplot2)
 library(stringr)
+library(rvest)
 ```
 
 ```{r}
@@ -66,28 +69,45 @@ gen2 <- gen2[!str_detect(gen2$Name, "Mega") | str_detect(gen2$Name, "Meganium"),
 gen3 <- gen3[!str_detect(gen3$Name, "Mega"), ]
 gen4 <- gen4[!str_detect(gen4$Name, "Mega"), ]
 gen5 <- gen5[!str_detect(gen5$Name, "Mega"), ]
-
 ```
 
+
 ```{r}
-ave_stats_by_gen <- rep(0, 6)
+pokemon_table <- read_html("../data/bulbapedia_table") %>%
+  html_table(fill = TRUE)
+all_mons_frame <- as.data.frame(pokemon_table[[2]])
+colnames(all_mons_frame) <- c("Number", "Nothing", "Name", "HP",
+                              "Attack", "Defense", "Sp. Atk",
+                              "Sp. Defense", "Speed", "Total",
+                              "Average")
+all_mons_frame$Nothing <- NULL
+gen7 <- filter(all_mons_frame, Number == 718 | Number >= 722)
+gen7 <- slice(gen7, 2:nrow(gen7))
+gen7$atk_spread <- abs(gen7$Attack - gen7$`Sp. Atk`)
+```
+
+
+```{r}
+ave_stats_by_gen <- rep(0, 7)
 ave_stats_by_gen[1] <- mean(gen1$Total)
 ave_stats_by_gen[2] <- mean(gen2$Total)
 ave_stats_by_gen[3] <- mean(gen3$Total)
 ave_stats_by_gen[4] <- mean(gen4$Total)
 ave_stats_by_gen[5] <- mean(gen5$Total)
 ave_stats_by_gen[6] <- mean(gen6$Total)
-num_mons_by_gen <- rep(0, 6)
+ave_stats_by_gen[7] <- mean(gen7$Total)
+num_mons_by_gen <- rep(0, 7)
 num_mons_by_gen[1] <- nrow(gen1)
 num_mons_by_gen[2] <- nrow(gen2)
 num_mons_by_gen[3] <- nrow(gen3)
 num_mons_by_gen[4] <- nrow(gen4)
 num_mons_by_gen[5] <- nrow(gen5)
 num_mons_by_gen[6] <- nrow(gen6)
+num_mons_by_gen[7] <- nrow(gen7)
 ```
 
 ```{r}
-by_gen <- data.frame("generation" = 1:6,
+by_gen <- data.frame("generation" = 1:7,
                      "ave_stats" = ave_stats_by_gen,
                      "num_mons" = num_mons_by_gen)
 ```
@@ -100,7 +120,7 @@ average_total_by_generation <- (ggplot(data = by_gen,
                                  geom_point(size = 3,
                                             aes(color = ave_stats)) +
                                   ylim(c(350,550)) +
-                                  scale_x_continuous(breaks = 1:6) +
+                                  scale_x_continuous(breaks = 1:7) +
                                   labs(title = "Average Base Stat Total by Generation",
                                        x = "Generation",
                                        y = "BST") +
@@ -112,7 +132,7 @@ average_total_by_generation <- (ggplot(data = by_gen,
 average_total_by_generation  
 ```
 
-As you can see, the first three generations were relatively even. Compared to that baseline, stats started to rise in generations 4 and 5 before really taking off in generation 6.  
+As you can see, the first three generations were relatively even. Compared to that baseline, stats started to rise in generations 4 and 5 before really taking off in generation 6 and coming down a bit in generation 7.  
 
 Of course, it's possible to introduce power creep in other ways. For example, if the next generation were to introduce two pokemon, a low level bug with a horrendous BST (base stat total) of 100 and then have that pokemon evolve into a beast with 900 BST, that would surely reflect more of a power creep than an alternate generation who released two pokemon who each had a BST of 500, even though the average would be the same.  
 
@@ -125,9 +145,11 @@ average_strong_stats <- c(mean(arrange(gen1, -Total)[1:num_to_keep[1], 5]$Total)
                          mean(arrange(gen3, -Total)[1:num_to_keep[3], 5]$Total),
                          mean(arrange(gen4, -Total)[1:num_to_keep[4], 5]$Total),
                          mean(arrange(gen5, -Total)[1:num_to_keep[5], 5]$Total),
-                         mean(arrange(gen6, -Total)[1:num_to_keep[6], 5]$Total))
+                         mean(arrange(gen6, -Total)[1:num_to_keep[6], 5]$Total),
+                         mean(arrange(gen7, -Total)[1:num_to_keep[7], 9]$Total))
 by_gen$strong_ave <- average_strong_stats
 ```
+
 
 
 ```{r}
@@ -150,13 +172,14 @@ While the overall shape is very similar, we do now see some divergence within th
 It's also possible that there's a more sneaky form of power creep going on. A pokémon usually only needs one of its attack stats to function. Even with the same base stat total, a pokémon with 150 attack and 15 special attack (Mega Beedrill) will be much stronger offensively than a pokémon with 85 in both stats (Murkrow) even though Murkrow has a slightly higher average attack stat. Let's see how much the spread between different attack stats changes over time:
 
 ```{r}
-ave_spread_by_gen <- rep(0, 6)
+ave_spread_by_gen <- rep(0, 7)
 ave_spread_by_gen[1] <- mean(gen1$atk_spread)
 ave_spread_by_gen[2] <- mean(gen2$atk_spread)
 ave_spread_by_gen[3] <- mean(gen3$atk_spread)
 ave_spread_by_gen[4] <- mean(gen4$atk_spread)
 ave_spread_by_gen[5] <- mean(gen5$atk_spread)
 ave_spread_by_gen[6] <- mean(gen6$atk_spread)
+ave_spread_by_gen[7] <- mean(gen7$atk_spread)
 by_gen$ave_spread <- round(ave_spread_by_gen, 1)
 ```
 
@@ -179,33 +202,28 @@ ave_spread_by_generation
 
 This is an interesting pattern. The second and third generations actually had a smaller average difference in their attacking stats than generation 1, but that trend completely reversed starting in generation 4.  
 
-Of course, there's an extent to which this increase is very predictable. As average stats go up, it makes sense that the difference between attacking stats would go up as well. Think of drawing two points on a balloon and then blowing up the balloon. As the size of the balloon increases, the distance between the points will as well, even though there's no actual bias causing this to occur. To see if this phenomenon is the only reason for the general increase over time, let's reexamine the graph above after dividing the values on the y axis by the average BST of the pokémon in each generation.  
+Of course, there's an extent to which this increase is very predictable. As average stats go up, it makes sense that the difference between attacking stats would go up as well. Think of drawing two points on a balloon and then blowing up the balloon. As the size of the balloon increases, the distance between the points will as well, even though there's no actual bias causing this to occur. To see if this phenomenon is the only reason for the general increase over time, let's reexamine the graph above after dividing the values on the y axis by the average BST of the pokémon in each generation. I also scaled all the values by the overall average BST across all generations so that the numbers are close in size to what we have above.
 
 ```{r}
-
-by_gen$spread_adjusted <- by_gen$ave_spread / by_gen$ave_stats
+overall_ave_BST <- (mean(pokemon$Total) * 6 + mean(gen7$Total))/7
+by_gen$spread_adjusted <- (by_gen$ave_spread / by_gen$ave_stats) * overall_ave_BST
 ave_spread_vs_ave_stats <- (ggplot(data = by_gen,
-                                       aes(x = ave_stats,
+                                       aes(x = generation,
                                            y = spread_adjusted)) +
                                  geom_point(size = 3,
-                                            aes(color = ave_stats)) +
-                                  labs(title = "Adjusted Spread vs BST Across Generations",
-                                       x = "Average BST",
-                                       y = "Average Adjusted Spread") +
-                                  geom_label(aes(label = generation),
-                             nudge_y = .001,
+                                            aes(color = spread_adjusted)) +
+                                  labs(title = "Adjusted Attack Spread Across Generations",
+                                       x = "Generation",
+                                       y = "Adjusted Attack Spread") +
+                                  geom_label(aes(label = round(spread_adjusted, 1)),
+                             nudge_y = .5,
                               size = 2.5) +
-                                  btheme() +
-                              geom_smooth(method = "lm", se = FALSE))
+                                  btheme())
 ave_spread_vs_ave_stats  
 ```
 
-The pattern is not as strong but does still persist. This implies a compound power creep -- As the average BST increases, so too does the difference between the two attacking stats.  
+The pattern is not as strong but does still persist (the correlation is half as large at .33 instead of the .66 that it was before adjusting). This implies a compound power creep -- even once we adjust for the base stat creep, the absolute difference between the two attacking stats is still tending to increase.   
 
-It'll be interesting to see how this trend continues into future generations. Despite everything we've just seen, I don't think the power creep is nearly as bad as it could be considering how long the franchise has been creating new pokémon  
-
-
-
-
+It'll be interesting to see how this trend continues into future generations. Despite everything we've just seen, I don't think the power creep is nearly as bad as it could be considering how long the franchise has been creating new pokémon.
 
 
